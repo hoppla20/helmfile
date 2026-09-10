@@ -69,8 +69,38 @@ func (st *Storage) resolveFile(missingFileHandler *string, tpe, path string, opt
 			}
 		}
 
-		if st.fs.FileExistsAt(fetchedFilePath) {
+		switch {
+		case fetchedFilePath == "":
+			// Fetch failed and the failure was ignored above (ignoreMissingGitBranch).
+			// Leave files empty and let the missing file handler below decide.
+		case st.fs.FileExistsAt(fetchedFilePath):
+			// A literal, existing file. Checked before glob-expanding so that a
+			// file name which happens to contain "[" or "?" (valid in
+			// filepath.Match patterns but also valid in plain file names) still
+			// resolves to itself when it exists.
 			files = []string{fetchedFilePath}
+		case remote.HasGlobPattern(path):
+			// Fetch joins the "@<file>" selector onto the local cache directory
+			// verbatim (see Remote.Fetch), so a wildcard selector is expanded
+			// here, against the fetched directory, using the same glob syntax as
+			// local values files (st.ExpandPaths / filepath.Match).
+			//
+			// st.ExpandPaths itself is not reused: its normalizePath would
+			// incorrectly prefix the helmfile's basePath onto this
+			// already-absolute cache path whenever remote.CacheDir() falls back
+			// to the relative ".helmfile" directory.
+			matches, globErr := st.fs.Glob(fetchedFilePath)
+			if globErr != nil {
+				return nil, false, fmt.Errorf("failed processing %s: %v", path, globErr)
+			}
+			sort.Strings(matches)
+			for _, m := range matches {
+				// Keep the same "regular files only" contract as the non-glob
+				// case above: a glob can also match directories.
+				if st.fs.FileExistsAt(m) {
+					files = append(files, m)
+				}
+			}
 		}
 	} else {
 		files, err = st.ExpandPaths(path)
