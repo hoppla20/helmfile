@@ -60,13 +60,18 @@ func (st *Storage) resolveFile(missingFileHandler *string, tpe, path string, opt
 	if remote.IsRemote(path) {
 		r := remote.NewRemote(st.logger, "", st.fs)
 
-		fetchedFilePath, err := r.Fetch(path, "values")
-		if err != nil {
+		// Named fetchErr, not err: err is declared in the outer scope above and
+		// checked again after this if-block. Reusing that name here would shadow
+		// it with a new, block-local variable (fetchedFilePath is new, so ":="
+		// can't reuse the outer err), silently discarding any fetch error that
+		// isn't returned or explicitly ignored below.
+		fetchedFilePath, fetchErr := r.Fetch(path, "values")
+		if fetchErr != nil {
 			// https://github.com/helmfile/helmfile/issues/392
-			if conf.IgnoreMissingGitBranch && strings.Contains(err.Error(), "' did not match any file(s) known to git") {
-				st.logger.Debugf("Ignored missing git branch error: %v", err)
+			if conf.IgnoreMissingGitBranch && strings.Contains(fetchErr.Error(), "' did not match any file(s) known to git") {
+				st.logger.Debugf("Ignored missing git branch error: %v", fetchErr)
 			} else {
-				return nil, false, err
+				return nil, false, fetchErr
 			}
 		}
 
