@@ -286,6 +286,8 @@ Notes and limitations:
 - The pattern is matched with the same syntax as local values file globs (`filepath.Match`: `*`, `?`, `[abc]`), against a single path segment — there is no recursive `**`.
 - Wildcards require an explicit `@` selector to mark the repository root, as in the example above.
 - Wildcards are only supported with getters that download a whole directory, such as `git::`. Plain `https://`/`s3://` references and a non-archive `s3::` reference each fetch a single file and cannot be expanded; use `git::` (or an `s3::` archive URL) instead.
+- A raw `?` in the file selector can never work as a wildcard: it starts the URL's query string (e.g. `?ref=main`), so anything after it is parsed as part of the query, not the file selector. A `?` wildcard must be percent-encoded as `%3F` to survive as part of the path, e.g. `@dir/v%3F.yaml?ref=main`.
+- This applies to environment `values:`/`secrets:` only. In release-level `values:`/`secrets:`, a wildcard that matches exactly one file also works, but a wildcard matching more than one file still fails with "glob patterns in release values and secrets is not supported yet" — the same restriction that already applies to local glob patterns there.
 
 ### Environment values precedence
 With the introduction of HCL, a new value precedence was introduced over environment values.

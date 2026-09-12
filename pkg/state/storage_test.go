@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/helmfile/helmfile/pkg/envvar"
@@ -198,12 +199,13 @@ func TestStorage_resolveFile_RemoteGlob(t *testing.T) {
 	errorHandler := MissingFileHandlerError
 
 	tests := []struct {
-		name        string
-		path        string
-		handler     *string
-		wantFiles   []string
-		wantSkipped bool
-		wantErr     bool
+		name            string
+		path            string
+		handler         *string
+		wantFiles       []string
+		wantSkipped     bool
+		wantErr         bool
+		wantErrContains string
 	}{
 		{
 			name:      "literal file selector still resolves to itself",
@@ -229,6 +231,26 @@ func TestStorage_resolveFile_RemoteGlob(t *testing.T) {
 			handler: &errorHandler,
 			wantErr: true,
 		},
+		{
+			// An unclosed "[" is a legal filename character (e.g. a literal
+			// remote file named "values-[foo.yaml" that doesn't exist at the
+			// fetched ref), but it's also invalid filepath.Match syntax
+			// (filepath.ErrBadPattern). Before wildcard support this selector
+			// was only ever checked with FileExistsAt and simply treated as
+			// missing; that behavior must be preserved rather than surfacing a
+			// hard "syntax error in pattern" regardless of missingFileHandler.
+			name:        "unclosed bracket pattern is treated as no match, not a hard error, under Info handler",
+			path:        "git::https://github.com/o/r.git@dir/values-[foo.yaml?ref=main",
+			handler:     &infoHandler,
+			wantSkipped: true,
+		},
+		{
+			name:            "unclosed bracket pattern still respects the Error handler as a plain missing-file error",
+			path:            "git::https://github.com/o/r.git@dir/values-[foo.yaml?ref=main",
+			handler:         &errorHandler,
+			wantErr:         true,
+			wantErrContains: "does not exist",
+		},
 	}
 
 	for _, tt := range tests {
@@ -240,6 +262,9 @@ func TestStorage_resolveFile_RemoteGlob(t *testing.T) {
 				t.Fatalf("resolveFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil {
+				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("resolveFile() error = %q, want it to contain %q", err.Error(), tt.wantErrContains)
+				}
 				return
 			}
 

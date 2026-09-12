@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -91,7 +92,17 @@ func (st *Storage) resolveFile(missingFileHandler *string, tpe, path string, opt
 			// to the relative ".helmfile" directory.
 			matches, globErr := st.fs.Glob(fetchedFilePath)
 			if globErr != nil {
-				return nil, false, fmt.Errorf("failed processing %s: %v", path, globErr)
+				// filepath.Glob's only documented error is ErrBadPattern (e.g. an
+				// unclosed "["). Before wildcard support, a selector containing "["
+				// was checked with FileExistsAt and simply treated as missing if it
+				// didn't exist, so a malformed pattern should fall back to the same
+				// missingFileHandler-driven "no matches" handling below rather than
+				// becoming an unconditional hard error, which would be a regression
+				// for existing Info/Warn/Debug users referencing such a file.
+				if !errors.Is(globErr, filepath.ErrBadPattern) {
+					return nil, false, fmt.Errorf("failed processing %s: %v", path, globErr)
+				}
+				st.logger.Debugf("Treating invalid glob pattern as no match for %s: %v", path, globErr)
 			}
 			sort.Strings(matches)
 			for _, m := range matches {

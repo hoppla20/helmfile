@@ -1188,6 +1188,37 @@ func TestRemote_Fetch_WildcardUnsupported(t *testing.T) {
 	}
 }
 
+// TestRemote_Fetch_WildcardAllowedS3Archive locks in the one s3:: shape a
+// wildcard selector IS allowed for: a forced s3:: getter pointing at an
+// archive. S3Getter decompresses archives into the cache dir (see
+// decompressorForFile), so a selector can still match files inside it, unlike
+// a single non-archive s3:: object (covered by TestRemote_Fetch_WildcardUnsupported).
+func TestRemote_Fetch_WildcardAllowedS3Archive(t *testing.T) {
+	testfs := testhelper.NewTestFs(map[string]string{CacheDir(): ""})
+
+	called := false
+	get := func(wd, src, dst string) error {
+		called = true
+		return nil
+	}
+	getter := &testGetter{get: get}
+
+	remote := &Remote{
+		Logger:   helmexec.NewLogger(io.Discard, "debug"),
+		Home:     CacheDir(),
+		S3Getter: getter,
+		fs:       testfs.ToFileSystem(),
+	}
+
+	url := "s3::https://bucket.s3.us-east-2.amazonaws.com/dir/app.tar.gz@*.yaml"
+	if _, err := remote.Fetch(url); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Errorf("expected S3Getter to be invoked for an archive wildcard selector")
+	}
+}
+
 // TestAWSSDKLogLevelInit verifies that the init() function reads HELMFILE_AWS_SDK_LOG_LEVEL correctly
 func TestAWSSDKLogLevelInit(t *testing.T) {
 	tests := []struct {

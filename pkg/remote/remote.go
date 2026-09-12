@@ -122,6 +122,13 @@ func IsRemote(goGetterSrc string) bool {
 // hasGlobMeta reports whether p contains a filepath.Match metacharacter. The
 // set matches filepath.Match's, which also backs local values-file globbing
 // (Storage.ExpandPaths), so remote and local glob syntax stay identical.
+//
+// In practice a raw "?" can never reach p when p is Source.File: url.Parse
+// splits the query string at the first unescaped "?", so it never survives
+// into u.Path. A "?" wildcard only reaches here percent-encoded ("%3F") in
+// the original URL, which url.Parse decodes back into a literal "?" in
+// u.Path/u.File. "?" is kept in this set anyway, for symmetry with
+// filepath.Match's metacharacters and to handle that percent-encoded case.
 func hasGlobMeta(p string) bool {
 	return strings.ContainsAny(p, `*?[`)
 }
@@ -133,8 +140,8 @@ func hasGlobMeta(p string) bool {
 //
 // Only the file selector is examined. The rest of a reference legitimately
 // contains glob metacharacters that are not patterns: "?" begins the query
-// string ("?ref=main"), and "[" appears in IPv6 hosts and in placeholder
-// values such as github.com/[$GITHUB_ORG]/repo.git.
+// string ("?ref=main") unless percent-encoded, and "[" appears in IPv6 hosts
+// and in placeholder values such as github.com/[$GITHUB_ORG]/repo.git.
 func HasGlobPattern(goGetterSrc string) bool {
 	u, err := Parse(goGetterSrc)
 	if err != nil {
